@@ -120,8 +120,6 @@ An intelligent voice-powered property search assistant that helps users find pro
 ![Map View](screenshots/map-view.png)
 *Interactive map showing property locations*
 
-> **Note**: To add screenshots, create a `screenshots/` folder in your project root and add your images there. Then update the image paths above to match your screenshot filenames.
-
 ##  Project Structure
 
 ```
