@@ -1,0 +1,7 @@
+streamlit
+requests
+pandas
+groq
+rapidfuzz
+datetime
+gtts
