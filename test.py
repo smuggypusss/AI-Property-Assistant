@@ -13,13 +13,15 @@ import re
 from gtts import gTTS
 import io
 import base64
+import time
+import hashlib
 
 # --- CONSTANTS ---
 # Approximately 0.1 degrees latitude/longitude change is about 11 km
 # This creates a bounding box roughly 22km x 22km, ensuring the 10km radius is covered.
 RECT_OFFSET_DEGREE = 0.1
 APIMARKET_BASE_URL = "https://prod.api.market/api/v1/the-api-guy/nobroker-api/api/nobroker/properties"
-APIMARKET_KEY = st.secrets['APIMARKET_KEY']
+APIMARKET_KEY=st.secrets['APIMARKET_KEY']
 # -----------------------------------------
 # 1. Setup Groq client and Models
 # -----------------------------------------
@@ -228,21 +230,21 @@ def fetch_location_insights(location_name):
 def fetch_nearby_places_for_coordinates(lat, lon, radius_m=500):
     """
     Fetch nearby places for given coordinates using Geoapify Places API.
-
+    
     Args:
         lat: Latitude
         lon: Longitude
         radius_m: Search radius in meters (default 500m)
-
+    
     Returns:
         List of nearby places with name, categories, distance, and coordinates
     """
     GEO_API_KEY = st.secrets.get("GEOAPIFY_API_KEY")
     if not GEO_API_KEY:
         return []
-
+    
     places_url = "https://api.geoapify.com/v2/places"
-
+    
     # Categories for nearby amenities
     categories = (
         "commercial.shopping_mall,commercial.department_store,commercial.supermarket,"
@@ -250,26 +252,26 @@ def fetch_nearby_places_for_coordinates(lat, lon, radius_m=500):
         "healthcare.hospital,healthcare.clinic_or_praxis,healthcare.pharmacy,"
         "catering.restaurant,catering.cafe"
     )
-
+    
     # Use circular filter with radius
     filter_circle = f"circle:{lon:.6f},{lat:.6f},{radius_m}"
-
+    
     places_params = {
         "categories": categories,
         "filter": filter_circle,
         "limit": 20,  # Limit to 20 places per property to avoid too many API calls
         "apiKey": GEO_API_KEY
     }
-
+    
     nearby_results = []
     try:
         places_response = requests.get(places_url, params=places_params, timeout=10)
-
+        
         if places_response.status_code != 200:
             return nearby_results  # Return empty list on error
-
+        
         places_data = places_response.json()
-
+        
         for feature in places_data.get('features', []):
             props = feature['properties']
             nearby_results.append({
@@ -282,7 +284,7 @@ def fetch_nearby_places_for_coordinates(lat, lon, radius_m=500):
     except Exception as e:
         # Silently fail for individual properties to not clutter the UI
         pass
-
+    
     return nearby_results
 
 
@@ -309,7 +311,7 @@ def fetch_property_listings_market(location_name, parsed_reqs, center_lat, cente
     listings = []
 
     try:
-        #st.code(f"API Market Request URL:\n{url}", language='http')
+        st.code(f"API Market Request URL:\n{url}", language='http')
 
         response = requests.get(url, headers=headers, timeout=30)
 
@@ -338,10 +340,10 @@ def fetch_property_listings_market(location_name, parsed_reqs, center_lat, cente
         # 3. Map the API's fields to your application's schema (Using confirmed keys)
         # Limit to first 5 properties to avoid too many API calls
         properties_to_process = properties[:5]
-
+        
         progress_bar = st.progress(0)
         status_text = st.empty()
-
+        
         for idx, item in enumerate(properties_to_process):
             if not isinstance(item, dict): continue
 
@@ -353,7 +355,7 @@ def fetch_property_listings_market(location_name, parsed_reqs, center_lat, cente
             # Extract price and format as monthly rent
             price_in_rupees = item.get('price') or 0
             price_per_month = f"Rs. {price_in_rupees:,}/month" if price_in_rupees > 0 else "Price on request"
-
+            
             # Extract BHK number from strings like "BHK2", "RK1", "BHK1"
             bhk_str = item.get('bhk', '')
             bedrooms = 0
@@ -422,7 +424,7 @@ def fetch_property_listings_market(location_name, parsed_reqs, center_lat, cente
                 "lon": item_lon,
                 "nearby_places": nearby_places
             })
-
+        
         # Clear progress indicators
         progress_bar.empty()
         status_text.empty()
@@ -433,8 +435,6 @@ def fetch_property_listings_market(location_name, parsed_reqs, center_lat, cente
     except Exception as e:
         st.error(f"Error processing API Market data: {e}")
         return []
-
-
 # -----------------------------------------
 # 8. Live Weather and Air Quality Index (OpenWeatherMap)
 # -----------------------------------------
@@ -483,11 +483,11 @@ def generate_speech_text(location_name, num_properties, weather_data, aqi_data):
     Optimized for Indian location names pronunciation with more energy and faster pace.
     """
     speech_parts = []
-
+    
     # Introduction with location and property count - more energetic
     if num_properties > 0:
         speech_parts.append(
-            f"For {location_name}, we found {num_properties} "
+            f"Great news! For {location_name}, we found {num_properties} "
             f"propert{'y' if num_properties == 1 else 'ies'} available! "
             f"Check your screen to view and compare them now."
         )
@@ -496,86 +496,132 @@ def generate_speech_text(location_name, num_properties, weather_data, aqi_data):
             f"Unfortunately, for {location_name}, no properties were found. "
             f"Please try searching a different location."
         )
-
+    
     # Weather information - more dynamic and energetic
     if weather_data or aqi_data:
         speech_parts.append("Here's the current weather and air quality update!")
-
+        
         if weather_data:
             temp = weather_data.get('temp_c', 'N/A')
             conditions = weather_data.get('conditions', 'N/A')
             humidity = weather_data.get('humidity', 'N/A')
-
+            
             # Format temperature for natural speech
             if isinstance(temp, (int, float)):
                 temp_str = f"{int(temp)}" if temp == int(temp) else f"{temp:.1f}"
             else:
                 temp_str = str(temp)
-
+            
             speech_parts.append(
                 f"Temperature: {temp_str} degrees Celsius. "
                 f"Conditions: {conditions.lower()}. "
                 f"Humidity: {humidity} percent."
             )
-
+        
         if aqi_data:
             aqi_status = aqi_data.get('aqi_status', 'N/A')
             pm2_5 = aqi_data.get('pm2_5', 'N/A')
             pm10 = aqi_data.get('pm10', 'N/A')
-
+            
             # Format PM values for natural speech
             if isinstance(pm2_5, (int, float)):
                 pm2_5_str = f"{int(pm2_5)}" if pm2_5 == int(pm2_5) else f"{pm2_5:.1f}"
             else:
                 pm2_5_str = str(pm2_5)
-
+            
             if isinstance(pm10, (int, float)):
                 pm10_str = f"{int(pm10)}" if pm10 == int(pm10) else f"{pm10:.1f}"
             else:
                 pm10_str = str(pm10)
-
+            
             speech_parts.append(
                 f"Air Quality Index: {aqi_status.lower()}. "
                 f"PM 2.5: {pm2_5_str} micrograms per cubic meter. "
                 f"PM 10: {pm10_str} micrograms per cubic meter."
             )
-
+    
     return " ".join(speech_parts)
 
 
-def text_to_speech(text, lang='en', slow=False, tld='com'):
+def text_to_speech(text, lang='en', slow=False, tld='com', max_retries=3, retry_delay=2):
     """
-    Convert text to speech using gTTS and return audio bytes.
+    Convert text to speech using gTTS with retry logic for rate limiting.
     Uses Indian English domain for better pronunciation of Indian location names.
     Configured for faster, more energetic speech.
-
+    
     Args:
         text: Text to convert to speech
         lang: Language code (default 'en' for English)
         slow: Whether to speak slowly (default False for faster speech)
         tld: Top-level domain for TTS service ('com' for US English, 'co.in' for Indian English)
-
+        max_retries: Maximum number of retry attempts (default 3)
+        retry_delay: Initial delay between retries in seconds (default 2)
+    
     Returns:
-        Audio bytes (MP3 format)
+        Audio bytes (MP3 format) or None if all retries fail
     """
-    try:
-        # Use faster speech (slow=False) and try Indian English domain first
-        # for better Indian location pronunciation
+    # Create cache key from text
+    cache_key = hashlib.md5(text.encode()).hexdigest()
+    
+    # Check session cache first
+    if 'tts_cache' not in st.session_state:
+        st.session_state.tts_cache = {}
+    
+    if cache_key in st.session_state.tts_cache:
+        return st.session_state.tts_cache[cache_key]
+    
+    # Try multiple times with exponential backoff
+    for attempt in range(max_retries):
         try:
-            tts = gTTS(text=text, lang=lang, slow=slow, tld='co.in')
-        except:
-            # Fallback to default TTS
-            tts = gTTS(text=text, lang=lang, slow=slow, tld=tld)
-
-        # Save to bytes buffer
-        audio_buffer = io.BytesIO()
-        tts.write_to_fp(audio_buffer)
-        audio_buffer.seek(0)
-
-        return audio_buffer.read()
-    except Exception as e:
-        st.error(f"TTS generation failed: {e}")
-        return None
+            # Add delay before each attempt (except first) to avoid rate limiting
+            if attempt > 0:
+                wait_time = retry_delay * (2 ** (attempt - 1))  # Exponential backoff
+                time.sleep(wait_time)
+            
+            # Try Indian English domain first for better pronunciation
+            try:
+                tts = gTTS(text=text, lang=lang, slow=slow, tld='co.in')
+            except Exception as e:
+                # If Indian domain fails, try default
+                if '429' in str(e) or 'Too Many Requests' in str(e):
+                    # For rate limit errors, wait longer before retry
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay * 3)
+                    tts = gTTS(text=text, lang=lang, slow=slow, tld=tld)
+                else:
+                    tts = gTTS(text=text, lang=lang, slow=slow, tld=tld)
+            
+            # Save to bytes buffer
+            audio_buffer = io.BytesIO()
+            tts.write_to_fp(audio_buffer)
+            audio_buffer.seek(0)
+            audio_bytes = audio_buffer.read()
+            
+            # Cache the result
+            st.session_state.tts_cache[cache_key] = audio_bytes
+            
+            return audio_bytes
+            
+        except Exception as e:
+            error_str = str(e)
+            # Check if it's a rate limit error
+            if '429' in error_str or 'Too Many Requests' in error_str:
+                if attempt < max_retries - 1:
+                    # Wait longer for rate limit errors
+                    wait_time = retry_delay * 5 * (attempt + 1)
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    st.warning(f"TTS rate limit reached. Please wait a moment and try again. Error: {error_str}")
+                    return None
+            else:
+                # For other errors, try next attempt or return None
+                if attempt == max_retries - 1:
+                    st.error(f"TTS generation failed after {max_retries} attempts: {error_str}")
+                    return None
+                continue
+    
+    return None
 
 
 # -----------------------------------------
@@ -686,106 +732,102 @@ if audio_file:
                 st.subheader("5. Property Listings Found (Real Data via API Market)")
 
                 listings = fetch_property_listings_market(
-                    location_to_search, parsed, lat, lon
+                            location_to_search, parsed, lat, lon
                 )
 
                 if listings:
-                    st.success(f"Found {len(listings)} matching properties in the area.")
+                            st.success(f"Found {len(listings)} matching properties in the area.")
 
-                    df_properties = pd.DataFrame(listings)
+                            df_properties = pd.DataFrame(listings)
 
-                    st.markdown("**Map of All Found Properties:**")
-                    # Use st.map directly with the properties DataFrame
-                    st.map(df_properties[['lat', 'lon']], zoom=12, use_container_width=True)
+                            st.markdown("**Map of All Found Properties:**")
+                            # Use st.map directly with the properties DataFrame
+                            st.map(df_properties[['lat', 'lon']], zoom=12, use_container_width=True)
 
-                    # Display individual property cards with amenities drill-down
-                    for prop in listings:
-                        with st.expander(
-                                f"🏡 {prop.get('description', 'Property')} - {prop.get('price_per_month', 'Price on request')}"):
-                            # Main details in columns
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("BHK", prop.get('bedrooms', 0))
-                            with col2:
-                                st.metric("Area", f"{prop.get('area_sqft', 0)} sqft")
-                            with col3:
-                                st.metric("Bathrooms", prop.get('bathrooms', 0))
-
-                            # Additional details
-                            st.markdown("---")
-                            col4, col5, col6 = st.columns(3)
-                            with col4:
-                                st.markdown(f"**📍 Location:** {prop.get('location', 'N/A')}")
-                            with col5:
-                                st.markdown(f"**🏢 Floor:** {prop.get('floor', 'N/A')}")
-                            with col6:
-                                st.markdown(f"**🚗 Parking:** {prop.get('parking', 'N/A').replace('_', ' ').title()}")
-
-                            if prop.get('address'):
-                                st.markdown(f"**📍 Address:** {prop.get('address')}")
-
-                            if prop.get('googleMapsPin'):
-                                st.markdown(f"**🗺️ Coordinates:** {prop.get('googleMapsPin')}")
-
-                            st.markdown(f"**📅 Available From:** {prop.get('status', 'N/A')}")
-                            st.markdown(f"**👤 Listed By:** {prop.get('builder', 'N/A')}")
-
-                            # Display nearby places for this property
-                            nearby_places = prop.get('nearby_places', [])
-                            if nearby_places:
-                                st.markdown("---")
-                                st.markdown("**📍 Nearby Amenities (within 500m):**")
-                                category_map = {}
-                                for place in nearby_places:
-                                    for cat in place.get('categories', []):
-                                        if cat not in category_map:
-                                            category_map[cat] = []
-                                        distance_str = f"{place['distance_m']}m away" if place.get(
-                                            'distance_m') else "nearby"
-                                        category_map[cat].append(f"{place['name']} ({distance_str})")
-
-                                if category_map:
-                                    for cat, items in category_map.items():
-                                        with st.expander(f"📍 {cat.capitalize()} ({len(items)} found)"):
-                                            st.write("* " + "\n* ".join(items))
-                                else:
-                                    st.info("No categorized amenities found nearby.")
-                            else:
-                                st.markdown("---")
-                                st.info("📍 Nearby amenities information not available for this property.")
-
-                            if prop.get('url'):
-                                st.markdown(f"**🔗 [View Details]({prop.get('url')})**")
-
-                    # 8. Text-to-Speech Summary
-                    st.subheader("🔊 Audio Summary")
-                    with st.spinner('Generating audio summary...'):
-                        # Generate speech text
-                        speech_text = generate_speech_text(
-                            location_name=location_to_search,
-                            num_properties=len(listings),
-                            weather_data=weather if lat and lon else {},
-                            aqi_data=aqi if lat and lon else {}
-                        )
-
-                        # Convert to speech (using Indian English, faster and more energetic)
-                        audio_bytes = text_to_speech(speech_text, lang='en', slow=False)
-
-                        if audio_bytes:
-                            # Save to temporary file for playback
-                            # Works on Streamlit Cloud - temp files persist during session
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3",
-                                                             dir=tempfile.gettempdir()) as tmp_audio:
-                                tmp_audio.write(audio_bytes)
-                                tmp_audio_path = tmp_audio.name
-
-                            st.success("Audio summary generated successfully!")
-
-                            # Create HTML audio player with autoplay and 1.25x speed
-                            import base64
-
-                            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-                            audio_html = f"""
+                            # Display individual property cards with amenities drill-down
+                            for prop in listings:
+                                with st.expander(f"🏡 {prop.get('description', 'Property')} - {prop.get('price_per_month', 'Price on request')}"):
+                                    # Main details in columns
+                                    col1, col2, col3 = st.columns(3)
+                                    with col1:
+                                        st.metric("BHK", prop.get('bedrooms', 0))
+                                    with col2:
+                                        st.metric("Area", f"{prop.get('area_sqft', 0)} sqft")
+                                    with col3:
+                                        st.metric("Bathrooms", prop.get('bathrooms', 0))
+                                    
+                                    # Additional details
+                                    st.markdown("---")
+                                    col4, col5, col6 = st.columns(3)
+                                    with col4:
+                                        st.markdown(f"**📍 Location:** {prop.get('location', 'N/A')}")
+                                    with col5:
+                                        st.markdown(f"**🏢 Floor:** {prop.get('floor', 'N/A')}")
+                                    with col6:
+                                        st.markdown(f"**🚗 Parking:** {prop.get('parking', 'N/A').replace('_', ' ').title()}")
+                                    
+                                    if prop.get('address'):
+                                        st.markdown(f"**📍 Address:** {prop.get('address')}")
+                                    
+                                    if prop.get('googleMapsPin'):
+                                        st.markdown(f"**🗺️ Coordinates:** {prop.get('googleMapsPin')}")
+                                    
+                                    st.markdown(f"**📅 Available From:** {prop.get('status', 'N/A')}")
+                                    st.markdown(f"**👤 Listed By:** {prop.get('builder', 'N/A')}")
+                                    
+                                    # Display nearby places for this property
+                                    nearby_places = prop.get('nearby_places', [])
+                                    if nearby_places:
+                                        st.markdown("---")
+                                        st.markdown("**📍 Nearby Amenities (within 500m):**")
+                                        category_map = {}
+                                        for place in nearby_places:
+                                            for cat in place.get('categories', []):
+                                                if cat not in category_map:
+                                                    category_map[cat] = []
+                                                distance_str = f"{place['distance_m']}m away" if place.get('distance_m') else "nearby"
+                                                category_map[cat].append(f"{place['name']} ({distance_str})")
+                                        
+                                        if category_map:
+                                            for cat, items in category_map.items():
+                                                with st.expander(f"📍 {cat.capitalize()} ({len(items)} found)"):
+                                                    st.write("* " + "\n* ".join(items))
+                                        else:
+                                            st.info("No categorized amenities found nearby.")
+                                    else:
+                                        st.markdown("---")
+                                        st.info("📍 Nearby amenities information not available for this property.")
+                                    
+                                    if prop.get('url'):
+                                        st.markdown(f"**🔗 [View Details]({prop.get('url')})**")
+                    
+                            # 8. Text-to-Speech Summary
+                            st.subheader("🔊 Audio Summary")
+                            with st.spinner('Generating audio summary...'):
+                                # Generate speech text
+                                speech_text = generate_speech_text(
+                                    location_name=location_to_search,
+                                    num_properties=len(listings),
+                                    weather_data=weather if lat and lon else {},
+                                    aqi_data=aqi if lat and lon else {}
+                                )
+                                
+                                # Convert to speech (using Indian English, faster and more energetic)
+                                audio_bytes = text_to_speech(speech_text, lang='en', slow=False)
+                                
+                                if audio_bytes:
+                                    # Save to temporary file for playback
+                                    # Works on Streamlit Cloud - temp files persist during session
+                                    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3", dir=tempfile.gettempdir()) as tmp_audio:
+                                        tmp_audio.write(audio_bytes)
+                                        tmp_audio_path = tmp_audio.name
+                                    
+                                    st.success("Audio summary generated successfully!")
+                                    
+                                    # Create HTML audio player with autoplay and 1.25x speed
+                                    import base64
+                                    audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+                                    audio_html = f"""
                                     <audio id="tts_audio" controls autoplay style="width: 100%;">
                                         <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mpeg">
                                         Your browser does not support the audio element.
@@ -807,19 +849,19 @@ if audio_file:
                                         }});
                                     </script>
                                     """
-                            st.components.v1.html(audio_html, height=80)
-
-                            # Also provide standard audio player as fallback
-                            st.markdown("**Listen to the summary (playing at 1.25x speed):**")
-
-                            # Display the text that was spoken
-                            with st.expander("📝 View spoken text"):
-                                st.write(speech_text)
-
-                            # Clean up temp file after a delay (Streamlit will handle this)
-                            # Note: In production, you might want to use a more sophisticated cleanup
-                        else:
-                            st.warning("Could not generate audio summary. Please try again.")
+                                    st.components.v1.html(audio_html, height=80)
+                                    
+                                    # Also provide standard audio player as fallback
+                                    st.markdown("**Listen to the summary (playing at 1.25x speed):**")
+                                    
+                                    # Display the text that was spoken
+                                    with st.expander("📝 View spoken text"):
+                                        st.write(speech_text)
+                                    
+                                    # Clean up temp file after a delay (Streamlit will handle this)
+                                    # Note: In production, you might want to use a more sophisticated cleanup
+                                else:
+                                    st.warning("Could not generate audio summary. Please try again.")
 
                 else:
                     st.warning("Could not generate property listings.")
@@ -834,11 +876,8 @@ if audio_file:
         try:
             if audio_path and os.path.exists(audio_path):
                 os.remove(audio_path)
-                # Don't show cleanup message in production to reduce clutter
-                # st.write(f"Cleaned up temporary file: {audio_path}")
+            # Don't show cleanup message in production to reduce clutter
+            # st.write(f"Cleaned up temporary file: {audio_path}")
         except Exception as e:
-        # Silently handle cleanup errors (file might already be removed)
+            # Silently handle cleanup errors (file might already be removed)
             pass
-
-    # Note: TTS audio file (tmp_audio_path) is kept for playback during session
-    # Streamlit Cloud will clean it up automatically when session ends
