@@ -1,4 +1,4 @@
-# AI Property Assistant — Groq Pipeline (India Optimized)
+# AI Property Assistant
 
 An intelligent voice-powered property search assistant that helps users find properties in India using natural language voice commands. The application uses AI to transcribe speech, extract property requirements, fetch real property listings, and provide comprehensive location insights including weather, air quality, and nearby amenities.
 
