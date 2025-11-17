@@ -1,5 +1,7 @@
 # AI Property Assistant
 
+**Note**: This is a Streamlit application, further advancements in this application is required (Converting to React for Frontend, Converting existing code to backend 
+code to FastAPI backend code.
 An intelligent voice-powered property search assistant that helps users find properties in India using natural language voice commands. The application uses AI to transcribe speech, extract property requirements, fetch real property listings, and provide comprehensive location insights including weather, air quality, and nearby amenities.
 
 ##  Features
