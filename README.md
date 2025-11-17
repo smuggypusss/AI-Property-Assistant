@@ -1,6 +1,6 @@
 # AI Property Assistant
 
-**Note**: This is a Streamlit application, further advancements in this application is required (Converting to React for Frontend, Converting existing code to backend 
+**Note**: This is a Streamlit(python) application, further advancements in this application is required (Converting to React for Frontend, Converting existing code to backend 
 code to FastAPI backend code.
 
 
